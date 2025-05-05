@@ -1,0 +1,61 @@
+version: '3.7'
+
+volumes:
+  pg_data:
+    driver: local
+  mysql_data:
+    driver: local
+
+x-shared_environment: &shared_environment
+  LOG_LEVEL: ${LOG_LEVEL:-debug}
+  POSTGRES_USERNAME: hinha  #postgres
+  POSTGRES_PASSWORD: Hinha@123
+  POSTGRES_DB: "init"
+  PGDATA: /var/lib/postgresql/data/pgdata
+  POSTGRES_HOST_AUTH_METHOD: "scram-sha-256"
+  MYSQL_ROOT_PASSWORD: root # mysql
+  MYSQL_DATABASE: app_db
+  MYSQL_USER: app_user
+  MYSQL_PASSWORD: secret123
+
+networks:
+  shared:
+    external: true
+    name: postgresql
+  
+services:
+  postgresdb:
+    hostname: postgresql
+    image: postgres:14.1-alpine
+    restart: unless-stopped
+    volumes:
+      - ./pg_sql:/docker-entrypoint-initdb.d
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - shared
+    environment:
+      <<: *shared_environment
+    ports:
+      - '5432:5432'
+  mysqldb:
+    hostname: mysql
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      <<: *shared_environment
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./db_mysql:/docker-entrypoint-initdb.d
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
