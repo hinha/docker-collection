@@ -1,0 +1,80 @@
+version: '3.7'
+
+volumes:
+  conduktor_data: {}
+
+networks:
+  shared:
+    external: true
+    name: postgresql
+  kafka-net:
+    driver: bridge
+    # external: true
+  
+services:
+  zookeeper:
+    image: docker.io/bitnami/zookeeper:3.8
+    networks:
+      - kafka-net
+    ports:
+      - '2181:2181'
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+
+  kafka:
+    hostname: kafka
+    image: bitnami/kafka:3.6
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    networks:
+      - shared
+      - kafka-net
+    volumes:
+      - ./config/kafka_server_jaas.conf:/bitnami/kafka/config/kafka_jaas.conf
+    environment:
+      KAFKA_CFG_NODE_ID: 1
+      KAFKA_CFG_BROKER_ID: 1
+      KAFKA_KRAFT_CLUSTER_ID: "cluster-1"
+      KAFKA_KRAFT_MODE: "false"
+      KAFKA_CFG_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_CFG_LISTENERS: SASL_PLAINTEXT://:9092
+      KAFKA_CFG_ADVERTISED_LISTENERS: SASL_PLAINTEXT://kafka:9092
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: SASL_PLAINTEXT:SASL_PLAINTEXT
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: SASL_PLAINTEXT
+      KAFKA_CFG_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAIN
+      KAFKA_CFG_SASL_ENABLED_MECHANISMS: PLAIN
+      KAFKA_OPTS: "-Djava.security.auth.login.config=/bitnami/kafka/config/kafka_jaas.conf"
+
+  # akhq:
+  #   image: tchiotludo/akhq
+  #   container_name: akhq
+  #   ports:
+  #     - "8081:8080"
+  #   volumes:
+  #     - ./config/ui.yml:/app/application.yml
+  #   depends_on:
+  #     - kafka
+
+  conduktor-console:
+    image: conduktor/conduktor-console:1.33.0
+    ports:
+      - "8080:8080"
+    volumes:
+      - conduktor_data:/var/conduktor
+    environment:
+      CDK_ORGANIZATION_NAME: "local-org"
+      CDK_DATABASE_URL: "postgresql://conduktor:my-conduktor-password@postgresql:5432/conduktordb"
+      CDK_MONITORING_CORTEX-URL: http://conduktor-monitoring:9009/
+      CDK_MONITORING_ALERT-MANAGER-URL: http://conduktor-monitoring:9010/
+      CDK_MONITORING_CALLBACK-URL: http://conduktor-platform:8080/monitoring/api/
+      CDK_MONITORING_NOTIFICATIONS-CALLBACK-URL: http://localhost:8080
+    networks:
+      - shared
+      - kafka-net
+  conduktor-monitoring:
+    image: conduktor/conduktor-console-cortex:1.33.0
+    environment:
+      CDK_CONSOLE-URL: "http://conduktor-console:8080"
