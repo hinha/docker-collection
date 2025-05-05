@@ -1,0 +1,40 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      # http:
+
+exporters:
+  debug:
+    verbosity: detailed
+  otlp:
+    endpoint: localhost:4317
+    tls:
+      insecure: true
+  # jaeger: // Deprecated
+  #   endpoint: jaeger:14250
+  #   tls:
+  #     insecure: true
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+
+extensions:
+  health_check:
+    endpoint: "localhost:13133"
+  pprof:
+    endpoint: "localhost:1888"
+  zpages:
+    endpoint: "localhost:55679"
+
+service:
+  telemetry:
+      logs:
+        level: "debug"
+  extensions: [pprof, zpages, health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlp, debug]
+    metrics:
+      receivers: [otlp]
+      exporters: [prometheus, debug]
