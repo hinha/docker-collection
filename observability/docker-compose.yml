@@ -34,7 +34,7 @@ services:
       - "8889:8889"  # ✅ Prometheus /metrics
       - "55681:55681" # (optional legacy ports)
     depends_on:
-      jaeger:
+      tempo:
         condition: service_started
     healthcheck:
       test: ["CMD", "grpcurl", "-plaintext", "localhost:4317", "grpc.health.v1.Health/Check"]
@@ -49,48 +49,19 @@ services:
       - OTEL_COLLECTOR_PORT_GRPC=4317
       - OTEL_COLLECTOR_PORT_HTTP=4318
       - GOMEMLIMIT=160MiB
-  jaeger:
-    platform: linux/amd64
-    networks:
-      - opentelemetry
-    image: jaegertracing/all-in-one:1.66.0
-    container_name: jaeger
-    command:
-      - "--memory.max-traces=5000"
-      - "--query.base-path=/jaeger/ui"
-      - "--prometheus.server-url=http://prometheus:9090"
-      - "--prometheus.query.normalize-calls=true"
-      - "--prometheus.query.normalize-duration=true"
-    deploy:
-      resources:
-        limits:
-          memory: 400M
-    restart: unless-stopped
-    ports:
-      - "16686:16686"         # Jaeger UI
-      # - "8889:8889"           #  <-- untuk Prometheus scrape
-      - "14269:14269"         # Jaeger Internal Health Port (default)
-    environment:
-      - METRICS_STORAGE_TYPE=prometheus
-    logging: *logging
-    healthcheck:
-      test: ["CMD", "sh", "-c", "test -S /var/run/docker.sock"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
   grafana:
     platform: linux/amd64
     networks:
       - opentelemetry
     container_name: grafana
-    image: grafana/grafana:11.5.2
+    image: grafana/grafana-enterprise:11.6.1
     deploy:
       resources:
         limits:
           memory: 120M
     restart: unless-stopped
     environment:
-      - "GF_INSTALL_PLUGINS=grafana-opensearch-datasource"
+      - "GF_INSTALL_PLUGINS=grafana-opensearch-datasource,grafana-clock-panel,alexanderzobnin-zabbix-app"
       - "GF_SECURITY_ADMIN_USER=admin@example.com"
       - "GF_SECURITY_ADMIN_PASSWORD=supersecure123"
     volumes:
@@ -125,4 +96,27 @@ services:
     restart: unless-stopped
     ports:
       - "9090:9090"
+    logging: *logging
+
+  tempo:
+    image: grafana/tempo:2.7.2
+    platform: linux/amd64
+    container_name: tempo
+    user: 0:0
+    networks:
+      - opentelemetry
+    restart: unless-stopped
+    command:
+      - "-config.file=/etc/tempo.yaml"
+    volumes:
+      - ./src/tempo/tempo.yaml:/etc/tempo.yaml
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://tempo:3200/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "3200:3200" # Tempo UI
+    environment:
+      - TZ=Asia/Jakarta
     logging: *logging

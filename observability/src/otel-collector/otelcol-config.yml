@@ -73,8 +73,8 @@ receivers:
 
 exporters:
   debug:
-  otlp/jaeger:
-    endpoint: jaeger:4317
+  otlp:
+    endpoint: tempo:4317
     tls:
       insecure: true
   prometheus:
@@ -129,7 +129,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, transform/resource_to_telemetry, transform, batch]
-      exporters: [otlp/jaeger, debug, spanmetrics]
+      exporters: [otlp, debug, spanmetrics]
     metrics:
       receivers: [hostmetrics, docker_stats, otlp, spanmetrics]
       processors: [memory_limiter, transform/resource_to_telemetry, batch]
