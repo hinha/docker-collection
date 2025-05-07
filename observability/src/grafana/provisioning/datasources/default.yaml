@@ -13,9 +13,7 @@ datasources:
     isDefault: true
     jsonData:
       exemplarTraceIdDestinations:
-        - datasourceUid: webstore-traces
+        - datasourceUid: tempo-traces
           name: trace_id
-
-        - url: http://localhost:8080/jaeger/ui/trace/$${__value.raw}
-          name: trace_id
-          urlDisplayLabel: View in Jaeger UI
+          url: http://tempo:3200/trace/$${__value.raw}
+          urlDisplayLabel: View in Tempo UI
