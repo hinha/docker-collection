@@ -54,7 +54,7 @@ services:
     networks:
       - opentelemetry
     container_name: grafana
-    image: grafana/grafana-enterprise:11.6.1
+    image: grafana/grafana-oss:12.0.0
     deploy:
       resources:
         limits:
@@ -88,6 +88,7 @@ services:
       - --web.enable-otlp-receiver
       - --enable-feature=exemplar-storage
     volumes:
+      - prometheus-data:/etc/prometheus
       - ./src/prometheus/prometheus-config.yaml:/etc/prometheus/prometheus-config.yaml
     deploy:
       resources:
@@ -106,10 +107,14 @@ services:
     networks:
       - opentelemetry
     restart: unless-stopped
-    command:
-      - "-config.file=/etc/tempo.yaml"
     volumes:
       - ./src/tempo/tempo.yaml:/etc/tempo.yaml
+      - tempo-data:/var/lib/tempo
+      - tempo-data:/persisted
+    command: [ "-config.file=/etc/tempo.yaml", "-log.level=debug" ]
+    depends_on:
+      tempo-cache:
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://tempo:3200/ready"]
       interval: 10s
@@ -117,6 +122,15 @@ services:
       retries: 5
     ports:
       - "3200:3200" # Tempo UI
+      - "4319:4319"
     environment:
       - TZ=Asia/Jakarta
+      - TEMPO_QUERIER_CACHE_BACKEND=redis
+      - TEMPO_QUERIER_CACHE_REDIS_ENDPOINT=host.docker.internal:6379
     logging: *logging
+
+volumes:
+  prometheus-data:
+    driver: local
+  tempo-data:
+    driver: local
