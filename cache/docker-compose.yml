@@ -1,0 +1,15 @@
+services:
+  redis:
+    image: redis:7.2
+    container_name: redis-secure
+    restart: unless-stopped
+    command: >
+      redis-server --requirepass yourStrongPassword
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+volumes:
+  redis-data:
+    driver: local
