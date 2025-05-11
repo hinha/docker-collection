@@ -112,9 +112,6 @@ services:
       - tempo-data:/var/lib/tempo
       - tempo-data:/persisted
     command: [ "-config.file=/etc/tempo.yaml", "-log.level=debug" ]
-    depends_on:
-      tempo-cache:
-        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://tempo:3200/ready"]
       interval: 10s
