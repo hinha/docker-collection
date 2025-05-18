@@ -27,9 +27,6 @@ storage:
       path: /var/lib/tempo/blocks
     wal:
       path: /var/lib/tempo/wal
-    cache: redis
-    redis:
-      endpoint: host.docker.internal:6379
 
 metrics_generator:
   registry:
