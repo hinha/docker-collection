@@ -13,7 +13,7 @@ datasources:
     isDefault: true
     jsonData:
       exemplarTraceIdDestinations:
-        - datasourceUid: tempo-traces
+        - datasourceUid: tempo-trace-grpc
           name: trace_id
           url: http://tempo:3200/trace/$${__value.raw}
           urlDisplayLabel: View in Tempo UI

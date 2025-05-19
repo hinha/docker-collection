@@ -1,0 +1,8 @@
+type: S3
+config:
+  bucket: ${env:THANOS_S3_BUCKET}
+  endpoint: ${env:THANOS_S3_ENDPOINT}
+  region: ${env:THANOS_S3_REGION}
+  access_key: ${env:THANOS_S3_ACCESS_KEY}
+  secret_key: ${env:THANOS_S3_SECRET_KEY}
+  insecure: ${env:THANOS_S3_INSECURE}

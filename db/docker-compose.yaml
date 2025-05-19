@@ -1,5 +1,3 @@
-version: '3.7'
-
 volumes:
   pg_data:
     driver: local
@@ -8,15 +6,15 @@ volumes:
 
 x-shared_environment: &shared_environment
   LOG_LEVEL: ${LOG_LEVEL:-debug}
-  POSTGRES_USERNAME: hinha  #postgres
-  POSTGRES_PASSWORD: Hinha@123
-  POSTGRES_DB: "init"
+  POSTGRES_USERNAME: ${POSTGRES_USERNAME}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  POSTGRES_DB: ${POSTGRES_DB}
+  POSTGRES_HOST_AUTH_METHOD: ${POSTGRES_HOST_AUTH_METHOD}
   PGDATA: /var/lib/postgresql/data/pgdata
-  POSTGRES_HOST_AUTH_METHOD: "scram-sha-256"
-  MYSQL_ROOT_PASSWORD: root # mysql
-  MYSQL_DATABASE: app_db
-  MYSQL_USER: app_user
-  MYSQL_PASSWORD: secret123
+  MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+  MYSQL_DATABASE: ${MYSQL_DATABASE}
+  MYSQL_USER: ${MYSQL_USER}
+  MYSQL_PASSWORD: ${MYSQL_PASSWORD}
 
 networks:
   shared:
@@ -25,6 +23,7 @@ networks:
   
 services:
   postgresdb:
+    container_name: postgredb
     hostname: postgresql
     image: postgres:14.1-alpine
     restart: unless-stopped
@@ -42,7 +41,9 @@ services:
       <<: *shared_environment
     ports:
       - '5432:5432'
+
   mysqldb:
+    container_name: mysqldb
     hostname: mysql
     image: mysql:8.0
     restart: unless-stopped
@@ -59,3 +60,4 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+      

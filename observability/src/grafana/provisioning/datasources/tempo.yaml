@@ -1,28 +1,29 @@
 apiVersion: 1
 
 datasources:
-  - name: Tempo
-    uid: tempo-traces
+  - name: Tempo (gRPC)
+    uid: tempo-trace-grpc
     type: tempo
     url: http://tempo:3200
     editable: true
-    isDefault: false
+    jsonData:
+      traceQuery: traceql
 
 panels:
   - title: Recent Traces
     type: table
-    datasource: tempo-traces
+    datasource: tempo-trace-grpc
     queryType: search
     targets:
       - expr: ''
 
   - title: Explore Traces
     type: trace
-    datasource: tempo-traces
+    datasource: tempo-trace-grpc
 
   - title: Latency Histogram (ms, 5m)
     type: timeseries
-    datasource: tempo-traces
-    queryType: traceql
+    datasource: tempo-trace-grpc
+    queryType: metrics
     targets:
       - expr: "topk(5, count_over_time({ resource.service.name=\"$service\" } | duration [5m]) by (trace.name))"
