@@ -5,6 +5,46 @@ x-default-logging: &logging
     max-file: "2"
     tag: "{{.Name}}"
 
+x-otelcol_environment: &otelcol_environment
+  OST_FILESYSTEM: ${OTEL_OST_FILESYSTEM}
+  OTEL_COLLECTOR_HOST: ${OTEL_COLLECTOR_HOST}
+  OTEL_COLLECTOR_PORT_GRPC: ${OTEL_COLLECTOR_PORT_GRPC}
+  OTEL_COLLECTOR_PORT_HTTP: ${OTEL_COLLECTOR_PORT_HTTP}
+  GOMEMLIMIT: ${GOMEMLIMIT}
+
+x-tempo_environment: &tempo_environment
+  TZ: ${TEMPO_TZ}
+  TEMPO_QUERIER_CACHE_BACKEND: ${TEMPO_QUERIER_CACHE_BACKEND}
+  TEMPO_QUERIER_CACHE_REDIS_ENDPOINT: redis://${TEMPO_QUERIER_CACHE_REDIS_ENDPOINT}
+
+x-thanos_environment: &thanos_environment
+  THANOS_S3_BUCKET: ${THANOS_S3_BUCKET}
+  THANOS_S3_ENDPOINT: ${THANOS_S3_ENDPOINT}
+  THANOS_S3_REGION: ${THANOS_S3_REGION}
+  THANOS_S3_ACCESS_KEY: ${THANOS_S3_ACCESS_KEY}
+  THANOS_S3_SECRET_KEY: ${THANOS_S3_SECRET_KEY}
+  THANOS_S3_INSECURE: ${THANOS_S3_INSECURE}
+
+x-exporter_telegraf_environment: &exporter_telegraf_environment
+  HOST_PROC: ${EXPORTER_TELEGRAF_HOST_PROC}
+  HOST_SYS: ${EXPORTER_TELEGRAF_HOST_SYS}
+  HOST_ETC: ${EXPORTER_TELEGRAF_HOST_ETC}
+  HOST_MOUNT_PREFIX: ${EXPORTER_TELEGRAF_HOST_MOUNT_PREFIX}
+
+x-exporter_s3_environment: &exporter_s3_environment
+  LISTEN_PORT: ${EXPORTER_S3_LISTEN_PORT}
+  S3_NAME: ${EXPORTER_S3_NAME}
+  S3_ENDPOINT: ${THANOS_S3_ENDPOINT}
+  S3_ACCESS_KEY: ${THANOS_S3_ACCESS_KEY}
+  S3_SECRET_KEY: ${THANOS_S3_SECRET_KEY}
+  S3_REGION: ${THANOS_S3_REGION}
+  S3_DISABLE_SSL: ${EXPORTER_S3_DISABLE_SSL}
+
+x-exporter_pg_environment: &exporter_pg_environment
+  DATA_SOURCE_URI: ${EXPORTER_PG_DATA_SOURCE_URI}
+  DATA_SOURCE_USER: ${EXPORTER_PG_DATA_SOURCE_USER}
+  DATA_SOURCE_PASS: ${EXPORTER_PG_DATA_SOURCE_PASS}
+
 networks:
   opentelemetry:
     external: true
@@ -26,50 +66,20 @@ services:
     volumes:
       - /:/hostfs:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./src/otel-collector/cred:/etc/otel/certs
       - ./src/otel-collector/otelcol-config.yml:/etc/otelcol-config.yml
       - ./src/otel-collector/otelcol-config-extras.yml:/etc/otelcol-config-extras.yml
     ports:
       - "4317:4317"  # ✅ gRPC (OTLP)
       - "4318:4318"  # ✅ HTTP (OTLP Metrics)
-      - "8889:8889"  # ✅ Prometheus /metrics
+      # - "8889:8889"  # Prometheus /metrics don't open in production
       - "55681:55681" # (optional legacy ports)
     depends_on:
       tempo:
         condition: service_started
-    healthcheck:
-      test: ["CMD", "grpcurl", "-plaintext", "localhost:4317", "grpc.health.v1.Health/Check"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
     logging: *logging
     environment:
-      # - ENVOY_PORT=8080
-      - OST_FILESYSTEM=/
-      - OTEL_COLLECTOR_HOST=otel-collector
-      - OTEL_COLLECTOR_PORT_GRPC=4317
-      - OTEL_COLLECTOR_PORT_HTTP=4318
-      - GOMEMLIMIT=160MiB
-  grafana:
-    platform: linux/amd64
-    networks:
-      - opentelemetry
-    container_name: grafana
-    image: grafana/grafana-oss:12.0.0
-    deploy:
-      resources:
-        limits:
-          memory: 120M
-    restart: unless-stopped
-    environment:
-      - "GF_INSTALL_PLUGINS=grafana-opensearch-datasource,grafana-clock-panel,alexanderzobnin-zabbix-app"
-      - "GF_SECURITY_ADMIN_USER=admin@example.com"
-      - "GF_SECURITY_ADMIN_PASSWORD=supersecure123"
-    volumes:
-      - ./src/grafana/grafana.ini:/etc/grafana/grafana.ini
-      - ./src/grafana/provisioning/:/etc/grafana/provisioning/
-    ports:
-      - "3000:3000"
-    logging: *logging
+      <<: *otelcol_environment
   
   prometheus:
     platform: linux/amd64
@@ -80,23 +90,24 @@ services:
     command:
       - --web.console.templates=/etc/prometheus/consoles
       - --web.console.libraries=/etc/prometheus/console_libraries
-      - --storage.tsdb.retention.time=1h
-      - --config.file=/etc/prometheus/prometheus-config.yaml
       - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=6h
+      - --storage.tsdb.min-block-duration=2h
+      - --storage.tsdb.max-block-duration=2h
+      - --config.file=/etc/prometheus/prometheus-config.yaml
       - --web.enable-lifecycle
+      - --web.enable-admin-api
       - --web.route-prefix=/
       - --web.enable-otlp-receiver
       - --enable-feature=exemplar-storage
     volumes:
-      - prometheus-data:/etc/prometheus
+      - prometheus-data:/prometheus
       - ./src/prometheus/prometheus-config.yaml:/etc/prometheus/prometheus-config.yaml
     deploy:
       resources:
         limits:
           memory: 300M
     restart: unless-stopped
-    ports:
-      - "9090:9090"
     logging: *logging
 
   tempo:
@@ -112,22 +123,164 @@ services:
       - tempo-data:/var/lib/tempo
       - tempo-data:/persisted
     command: [ "-config.file=/etc/tempo.yaml", "-log.level=debug" ]
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://tempo:3200/ready"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
     ports:
-      - "3200:3200" # Tempo UI
+      # - "3200:3200" # Tempo UI don't open in production
       - "4319:4319"
     environment:
-      - TZ=Asia/Jakarta
-      - TEMPO_QUERIER_CACHE_BACKEND=redis
-      - TEMPO_QUERIER_CACHE_REDIS_ENDPOINT=host.docker.internal:6379
+      <<: *tempo_environment
     logging: *logging
+
+  cadvisor:
+    image: google/cadvisor:latest
+    container_name: cadvisor
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    command:
+      - '-port=8999'
+    ports:
+      - "8999:8999"
+    networks:
+      - opentelemetry
+    restart: unless-stopped
+
+  node-exporter:
+    image: prom/node-exporter
+    container_name: node-exporter
+    ports:
+      - "9100:9100"
+    networks:
+      - opentelemetry
+    restart: unless-stopped
+
+  telegraf:
+    image: telegraf:1.34.3-alpine
+    container_name: telegraf
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - ./src/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+      - /var/log/nginx:/var/log/nginx:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /etc:/host/etc:ro
+      - /:/rootfs:ro
+    networks:
+      - opentelemetry
+    environment:
+      <<: *exporter_telegraf_environment
+
+  s3prometheus:
+    image: molu8bits/s3bucket_exporter:1.0.2
+    container_name: s3prometheus
+    environment:
+      <<: *exporter_s3_environment
+    restart: unless-stopped
+    networks:
+      - opentelemetry  
+
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.17.1
+    container_name: postgres-exporter
+    environment:
+      <<: *exporter_pg_environment
+    networks:
+      - opentelemetry
+    restart: unless-stopped
+
+  thanos-sidecar:
+    image: quay.io/thanos/thanos:v0.38.0
+    container_name: thanos-sidecar
+    user: 0:0
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        cp /etc/thanos/bucket.yml /etc/thanos/bucket.tpl.yml && \
+        chmod +x /etc/thanos/parse-env.sh && \
+        /etc/thanos/parse-env.sh /etc/thanos/bucket.tpl.yml /etc/thanos/bucket.yml && \
+        thanos sidecar --tsdb.path=/prometheus --prometheus.url=http://prometheus:9090 --objstore.config-file=/etc/thanos/bucket.tpl.yml
+    volumes:
+      - prometheus-data:/prometheus
+      - ./src/thanos/parse-env.sh:/etc/thanos/parse-env.sh
+      - ./src/thanos/bucket.yml:/etc/thanos/bucket.yml
+    environment:
+      <<: *thanos_environment
+    depends_on:
+      prometheus:
+        condition: service_started
+    networks:
+      - opentelemetry
+    restart: unless-stopped
+
+  thanos-query:
+    image: quay.io/thanos/thanos:v0.38.0
+    container_name: thanos-query
+    command:
+      - query
+      - --http-address=0.0.0.0:9091
+      - --grpc-address=0.0.0.0:10901
+      - --endpoint=thanos-sidecar:10901
+      - --endpoint=thanos-store:10901
+      - --store.sd-dns-interval=30s
+      - --log.level=debug
+    networks:
+      - opentelemetry
+    depends_on:
+      - thanos-sidecar
+    restart: unless-stopped
+
+  thanos-store:
+    image: quay.io/thanos/thanos:v0.38.0
+    container_name: thanos-store
+    user: 0:0
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+          cp /etc/thanos/bucket.yml /etc/thanos/bucket.tpl.yml && \
+          chmod +x /etc/thanos/parse-env.sh && \
+          /etc/thanos/parse-env.sh /etc/thanos/bucket.tpl.yml /etc/thanos/bucket.yml && \
+          thanos store --data-dir=/data --objstore.config-file=/etc/thanos/bucket.tpl.yml \
+          --grpc-address=0.0.0.0:10901 --http-address=0.0.0.0:9090
+    volumes:
+      - ./src/thanos/bucket.yml:/etc/thanos/bucket.yml
+      - ./src/thanos/parse-env.sh:/etc/thanos/parse-env.sh
+    environment:
+      <<: *thanos_environment
+    networks:
+      - opentelemetry
+    restart: unless-stopped
+
+  thanos-compactor:
+    image: quay.io/thanos/thanos:v0.38.0
+    container_name: thanos-compactor
+    user: 0:0
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+          cp /etc/thanos/bucket.yml /etc/thanos/bucket.tpl.yml && \
+          chmod +x /etc/thanos/parse-env.sh && \
+          /etc/thanos/parse-env.sh /etc/thanos/bucket.tpl.yml /etc/thanos/bucket.yml && \
+          thanos compact --data-dir=/data --objstore.config-file=/etc/thanos/bucket.tpl.yml \
+          --retention.resolution-raw=30d --retention.resolution-5m=180d --retention.resolution-1h=365d --wait
+    volumes:
+      - ./src/thanos/bucket.yml:/etc/thanos/bucket.yml
+      - ./src/thanos/parse-env.sh:/etc/thanos/parse-env.sh
+      - thanos-compactor-data:/data
+    environment:
+      <<: *thanos_environment
+    networks:
+      - opentelemetry
+    restart: unless-stopped
 
 volumes:
   prometheus-data:
     driver: local
   tempo-data:
+    driver: local
+  thanos-compactor-data:
     driver: local
